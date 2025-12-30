@@ -1,44 +1,53 @@
 # model.py
 from ultralytics import YOLO
-import cv2
+from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 
-# Load your trained YOLO model
+# Load YOLO model
 model = YOLO("best.pt")
 
 def detect_number_plate(image):
     """
-    Input: image as numpy array (RGB)
-    Output: BGR image with bounding boxes + confidence score
+    Input: RGB image as numpy array
+    Output: PIL Image with bounding boxes + confidence score
     """
 
-    results = model.predict(image, conf=0.5, verbose=False)
+    img_pil = Image.fromarray(image)
+    draw = ImageDraw.Draw(img_pil)
 
-    # Convert copy to BGR for drawing
-    img_out = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    # Load font
+    try:
+        font = ImageFont.truetype("arial.ttf", 20)
+    except:
+        font = ImageFont.load_default()
+
+    # YOLO prediction
+    results = model.predict(image, conf=0.5, verbose=False)
 
     for r in results:
         boxes = r.boxes
-
         if boxes is None or len(boxes) == 0:
             continue
 
         xyxy = boxes.xyxy.cpu().numpy()
-        confs = boxes.conf.cpu().numpy()   # confidence values
+        confs = boxes.conf.cpu().numpy()
 
         for box, conf in zip(xyxy, confs):
             x1, y1, x2, y2 = map(int, box.tolist())
+            label = f"Plate {conf*100:.1f}%"
 
-            # Draw bounding box
-            cv2.rectangle(img_out, (x1, y1), (x2, y2), (0, 255, 0), 3)
+            # Draw rectangle
+            draw.rectangle([x1, y1, x2, y2], outline="green", width=3)
 
-            # Prepare confidence label
-            conf_percent = f"{conf*100:.1f}%"  # convert 0.92 → "92.0%"
+            # Get text size using textbbox
+            bbox = draw.textbbox((0,0), label, font=font)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
 
-            label = f"Plate {conf_percent}"
+            # Draw label background
+            draw.rectangle([x1, y1 - text_height, x1 + text_width, y1], fill="green")
 
-            # Draw label above the box
-            cv2.putText(img_out, label, (x1, y1 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            # Draw text
+            draw.text((x1, y1 - text_height), label, fill="white", font=font)
 
-    return img_out
+    return img_pil
